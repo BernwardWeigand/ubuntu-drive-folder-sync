@@ -1,3 +1,6 @@
+# do not share config files for security reasons
 config.json
+# no logfiles should be shared
+sync.log
 
 .idea/
