@@ -3,6 +3,8 @@ from hashlib import sha256
 from json import JSONDecodeError, load
 from logging import basicConfig, warning, INFO, error, info
 from os import path, walk
+from signal import signal, SIGTERM, Signals
+from types import FrameType
 from typing import Tuple
 
 from gi.repository import Gio, GLib  # GNOME APIs for file operations and DBus integration
@@ -118,7 +120,7 @@ def get_remote_file_hash(dest_file: Gio.File) -> str:
         stream.close()  # Ensure the stream is closed
         return hasher.hexdigest()
     except Exception as e:
-        warning(f"Failed to compute remote file hash: {e}")
+        error(f"Failed to compute remote file hash: {e}")
         return ""
 
 
@@ -131,7 +133,7 @@ def compute_file_hash(file_path: str) -> str:
                 hasher.update(chunk)
         return hasher.hexdigest()
     except Exception as e:
-        warning(f"Failed to compute local file hash: {e}")
+        error(f"Failed to compute local file hash: {e}")
         return ""
 
 
@@ -162,7 +164,7 @@ def sync_file(file_path: str) -> None:
             parent_dir.make_directory_with_parents()
             info(f"Created parent directory: {parent_dir.get_uri()}")
         except Exception as e:
-            error(f"Failed to create parent directory {parent_dir.get_uri()}: {e}")
+            warning(f"Failed to create parent directory {parent_dir.get_uri()}: {e}")
             return
 
     # Check if file exists and compare hashes before deleting and copying
@@ -186,7 +188,7 @@ def sync_file(file_path: str) -> None:
     try:
         src_file.copy(dest_file, Gio.FileCopyFlags.OVERWRITE)
     except Exception as e:
-        error(f"Failed to copy {file_path} to {drive_file_path}: {e}")
+        warning(f"Failed to copy {file_path} to {drive_file_path}: {e}")
         return
     info(f"Synced: {file_path} -> {drive_file_path}")
 
@@ -284,12 +286,19 @@ def start_syncing():
     except Exception as e:
         error(f"Failed to set up system event detection: {e}")
 
+    def stop_app(signum: Signals | int, frame: FrameType | None = None):
+        observer.stop()
+        observer.join()
+        info(f"Sync service stopped: {Signals(signum).name}")
+        exit(0)
+
+    signal(SIGTERM, stop_app)
+
     try:
         observer.join()
     except KeyboardInterrupt:
-        observer.stop()
-        observer.join()
-        info("Sync service stopped.")
+        info(f"Sync manually stopped")
+        stop_app(SIGTERM)
 
 
 if __name__ == "__main__":
