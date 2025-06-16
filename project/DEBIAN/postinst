@@ -1,0 +1,6 @@
+#!/bin/bash
+
+for USER_DIR in /home/*; do
+  AUTOSTART_DIR="$USER_DIR/.config/autostart/"
+  cp "/usr/share/drive-sync/drive-sync.desktop" "$AUTOSTART_DIR"
+done

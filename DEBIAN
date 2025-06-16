@@ -1,6 +1,0 @@
-Package: drive-sync
-Version: 1
-Architecture: all
-Depends: python3-gi, python3-watchdog
-Maintainer: Bernward Weigand
-Description: TODO

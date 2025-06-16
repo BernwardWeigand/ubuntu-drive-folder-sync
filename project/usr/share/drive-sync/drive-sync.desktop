@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Exec=/opt/drive-sync/drive-sync.py
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Name=Drive Sync
+Comment[en_US]=
+Comment=
