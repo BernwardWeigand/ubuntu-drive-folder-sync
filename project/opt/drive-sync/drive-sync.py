@@ -15,7 +15,7 @@ from watchdog.observers import Observer
 GOOGLE_DRIVE_PREFIX = "google-drive://"
 
 # Load configuration
-CONFIG_DIR = path.expanduser("~/.drive-sync/")
+CONFIG_DIR = path.expanduser("~/.config/drive-sync/")
 CONFIG_PATH = path.join(CONFIG_DIR, "config.json")
 LOG_FILE = path.join(CONFIG_DIR, "sync.log")
 
@@ -36,10 +36,14 @@ def load_config() -> Tuple[str, str, str]:
             drive_user: str = config.get("drive_user")
             if not source_folder or not destination_folder or not drive_user:
                 raise ValueError(
-                    "Missing required configuration values: source_folder, destination_folder, and drive_user")
+                    "Missing some of the required configuration values: source_folder, destination_folder, and drive_user"
+                )
             return path.expanduser(source_folder), path.expanduser(destination_folder), drive_user
-    except (FileNotFoundError, JSONDecodeError, ValueError) as e:
-        error(f"Configuration error: {e}")
+    except (JSONDecodeError, ValueError) as e:
+        error(f"Error in configuration file: {e}")
+        exit(1)
+    except FileNotFoundError as e:
+        error(f"No configuration file found: {e}")
         exit(1)
 
 
