@@ -2,5 +2,5 @@ Package: drive-sync
 Version: 1.0.0
 Architecture: all
 Depends: python3, python3-gi, python3-watchdog
-Maintainer: Bernward Weigand
-Description: TODO
+Maintainer: Bernward Weigand <bernward.weigand@posteo.de>
+Description: A small utility tool for syncing a folder to google drive
