@@ -3,4 +3,4 @@ Version: 1.0.0
 Architecture: all
 Depends: python3, python3-gi, python3-watchdog
 Maintainer: Bernward Weigand <bernward.weigand@posteo.de>
-Description: A small utility tool for syncing a folder to google drive
+Description: A small utility tool for syncing a folder from a GNOME Shell desktop environment to Google Drive. The syncing is one way from the local folder to the one in google Drive.
