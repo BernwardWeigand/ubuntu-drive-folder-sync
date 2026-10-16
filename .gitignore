@@ -1,2 +1,4 @@
 # we do not want to push debian packages
 *.deb
+# python bytecode
+__pycache__/
