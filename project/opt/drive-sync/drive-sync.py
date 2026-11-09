@@ -25,6 +25,13 @@ RCLONE = "rclone"
 DEBOUNCE_SECONDS = 2.0
 # Fragments of rclone's error output which indicate that the Google login has to be renewed
 AUTH_ERROR_MARKERS = ("invalid_grant", "token expired", "cannot fetch token", "couldn't fetch token")
+# Fragments of rclone's error output which indicate that Google Drive is not reachable, e.g. right after a resume.
+# rclone then also reports "couldn't fetch token", so these have to be checked before the login problems.
+NETWORK_ERROR_MARKERS = (
+    "dial tcp", "no such host", "server misbehaving", "network is unreachable", "connection refused", "i/o timeout"
+)
+# Seconds to wait before retrying a sync that failed because of the network
+RETRY_SECONDS = 300
 
 # Load configuration
 CONFIG_DIR = path.expanduser("~/.config/drive-sync/")
@@ -99,8 +106,13 @@ LOCAL_FOLDER, DRIVE_FOLDER, RCLONE_REMOTE = load_config()
 auth_error_notified = False
 
 
+class NetworkError(Exception):
+    """Google Drive is not reachable, the sync has to be retried later."""
+
+
 def run_rclone(*args: str) -> bool:
-    """Run an rclone command, log its outcome and report login problems to the user."""
+    """Run an rclone command, log its outcome and report login problems to the user.
+    Raises a NetworkError if Google Drive is not reachable."""
     global auth_error_notified
     # https://rclone.org/docs/
     result: CompletedProcess = run([RCLONE, *args], capture_output=True, text=True)
@@ -108,6 +120,8 @@ def run_rclone(*args: str) -> bool:
         auth_error_notified = False
         return True
 
+    if any(marker in result.stderr for marker in NETWORK_ERROR_MARKERS):
+        raise NetworkError(result.stderr.strip())
     error(f"rclone {' '.join(args)} failed ({result.returncode}): {result.stderr.strip()}")
     if any(marker in result.stderr for marker in AUTH_ERROR_MARKERS) and not auth_error_notified:
         auth_error_notified = True
@@ -155,6 +169,7 @@ class SyncQueue:
         self._condition = Condition()
         self._pending: dict[str, float] = {}  # file path -> point in time when it is due
         self._full_sync_requested = False
+        self._retry_scheduled = False
         Thread(target=self._run, daemon=True).start()
 
     def add_file(self, file_path: str) -> None:
@@ -166,6 +181,24 @@ class SyncQueue:
         with self._condition:
             self._full_sync_requested = True
             self._condition.notify()
+
+    def retry(self) -> bool:
+        """Perform a full sync if a sync failed because of the network (a full sync covers the failed files)."""
+        with self._condition:
+            if not self._retry_scheduled:
+                return GLib.SOURCE_REMOVE
+            self._retry_scheduled = False
+        info("Retrying the failed sync...")
+        self.add_full_sync()
+        return GLib.SOURCE_REMOVE
+
+    def _schedule_retry(self) -> None:
+        with self._condition:
+            if self._retry_scheduled:
+                return
+            self._retry_scheduled = True
+        # https://amolenaar.pages.gitlab.gnome.org/pygobject-docs/GLib-2.0/functions.html#gi.repository.GLib.timeout_add_seconds
+        GLib.timeout_add_seconds(RETRY_SECONDS, self.retry)
 
     def _run(self) -> None:
         while True:
@@ -192,6 +225,9 @@ class SyncQueue:
                 else:
                     for file in due_files:
                         sync_file(file)
+            except NetworkError as e:
+                warning(f"Google Drive is not reachable, retrying when the network changes or in {RETRY_SECONDS} s: {e}")
+                self._schedule_retry()
             except Exception as e:
                 error(f"Sync failed: {e}")
 
@@ -253,6 +289,16 @@ def start_syncing():
         screen_proxy.connect("g-signal", on_screen_saver_signal)
     except Exception as e:
         error(f"Failed to set up screen lock detection: {e}")
+
+    # noinspection PyUnusedLocal
+    def on_network_changed(monitor: Gio.NetworkMonitor, network_available: bool) -> None:
+        """Retry a sync that failed because of the network as soon as it is back."""
+        if network_available:
+            queue.retry()
+
+    # https://amolenaar.pages.gitlab.gnome.org/pygobject-docs/Gio-2.0/interface-NetworkMonitor.html
+    network_monitor = Gio.NetworkMonitor.get_default()
+    network_monitor.connect("network-changed", on_network_changed)
 
     def stop_app(signal_name: str) -> bool:
         info(f"Sync service stopped: {signal_name}")
